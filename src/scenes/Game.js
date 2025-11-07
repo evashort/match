@@ -819,12 +819,22 @@ export class Game extends Phaser.Scene {
     }
 
     updateGridOnce(grid, time) {
-        for (let y = 0; y < this.gridSize; y++) {
+        for (let y = this.gridSize - 1; y >= 0; y--) {
             for (let x = 0; x < this.gridSize; x++) {
-                if ((grid[y][x] instanceof SlidingGem || grid[y][x] instanceof FallingGem) && grid[y][x].arrivalTime <= time) {
+                if (grid[y][x] instanceof SlidingGem && grid[y][x].arrivalTime <= time) {
                     const gem = new Gem(grid[y][x].id);
                     gem.color = grid[y][x].color;
                     grid[y][x] = gem;
+                } else if (grid[y][x] instanceof FallingGem && grid[y][x].arrivalTime <= time) {
+                    if (y < this.gridSize - 1 && grid[y + 1][x] instanceof Hole) {
+                        grid[y + 1][x] = grid[y][x];
+                        grid[y + 1][x].arrivalTime += FallingGem.DURATION;
+                        grid[y][x] = new Hole();
+                    } else {
+                        const gem = new Gem(grid[y][x].id);
+                        gem.color = grid[y][x].color;
+                        grid[y][x] = gem;
+                    }
                 } else if (grid[y][x] instanceof ShrinkingGem && grid[y][x].arrivalTime <= time) {
                     grid[y][x] = new Hole();
                 }
