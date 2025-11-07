@@ -701,9 +701,16 @@ export class Game extends Phaser.Scene {
                             // https://tsitsul.in/blog/coloropt/
                             [0x4053d3, 0xddb310, 0xb51d14, 0x00beff, 0xfb49b0, 0x00b25d, 0xcacaca][newPiece.color],
                         );
+                    } else {
+                        this.idSprites[id] = null;
                     }
                 } else if (newPos === null) {
-                    this.idSprites[id].destroy();
+                    const sprite = this.idSprites[id];
+                    if (sprite !== null) {
+                        sprite.destroy();
+                    }
+
+                    delete this.idSprites[id];
                 } else {
                     const [oldX, oldY] = oldPos;
                     const [newX, newY] = newPos;
@@ -819,20 +826,7 @@ export class Game extends Phaser.Scene {
                     gem.color = grid[y][x].color;
                     grid[y][x] = gem;
                 } else if (grid[y][x] instanceof ShrinkingGem && grid[y][x].arrivalTime <= time) {
-                    if (y <= 0) {
-                        grid[y][x] = new Hole();
-                    } else {
-                        const gem = grid[y - 1][x];
-                        if (gem instanceof Gem) {
-                            grid[y - 1][x] = new Hole();
-                            const fallingGem = new FallingGem(gem.id);
-                            fallingGem.color = gem.color;
-                            fallingGem.arrivalTime = time + FallingGem.DURATION;
-                            grid[y][x] = fallingGem;
-                        } else {
-                            grid[y][x] = new Hole();
-                        }
-                    }
+                    grid[y][x] = new Hole();
                 }
             }
         }
@@ -853,6 +847,26 @@ export class Game extends Phaser.Scene {
                         gem.color = grid[shapeY][x].color;
                         gem.arrivalTime = time + ShrinkingGem.DURATION;
                         grid[shapeY][x] = gem;
+                    }
+                }
+            }
+        }
+
+        for (let y = this.gridSize - 1; y >= 0; y--) {
+            for (let x = 0; x < this.gridSize; x++) {
+                if (grid[y][x] instanceof Hole) {
+                    if (y <= 0) {
+                        const fallingGem = new FallingGem();
+                        fallingGem.color = Math.floor(Math.random() * 7);
+                        fallingGem.arrivalTime = time + FallingGem.DURATION;
+                        grid[y][x] = fallingGem;
+                    } else if (grid[y - 1][x] instanceof Gem) {
+                        const gem = grid[y - 1][x];
+                        grid[y - 1][x] = new Hole();
+                        const fallingGem = new FallingGem(gem.id);
+                        fallingGem.color = gem.color;
+                        fallingGem.arrivalTime = time + FallingGem.DURATION;
+                        grid[y][x] = fallingGem;
                     }
                 }
             }
