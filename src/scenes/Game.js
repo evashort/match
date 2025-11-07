@@ -6,6 +6,7 @@ export class Game extends Phaser.Scene {
 
         this.gridSize = 6; // 6x6 grid
         this.tileSize = 50; // Size of each grid cell
+        this.colorCount = 4;
         this.cars = [];
         this.selectedVehicle = null;
         this.dragStart = null;
@@ -382,6 +383,7 @@ export class Game extends Phaser.Scene {
             const dragStopX = Math.floor((pointer.x - this.boardOffsetX) / this.tileSize);
             const dragStopY = Math.floor((pointer.y - this.boardOffsetY) / this.tileSize);
             if (dragStopX != dragStartX || dragStopY != dragStartY) {
+                this.dragStart = null;
                 const dragStartCenterX = this.boardOffsetX + (dragStartX + 0.5) * this.tileSize;
                 const dragStartCenterY = this.boardOffsetY + (dragStartY + 0.5) * this.tileSize;
                 let direction = null;
@@ -410,16 +412,39 @@ export class Game extends Phaser.Scene {
                 if (direction !== null) {
                     const otherX = dragStartX + (direction === Direction.RIGHT) - (direction === Direction.LEFT);
                     const otherY = dragStartY + (direction === Direction.DOWN) - (direction === Direction.UP);
-                    if (this.grid[dragStartY][dragStartX] instanceof Gem && this.grid[otherY][otherX] instanceof Gem) {
-                        this.move = {
-                            x: dragStartX,
-                            y: dragStartY,
-                            direction: direction,
+                    if (this.grid[dragStartY][dragStartX] instanceof Gem && this.grid[otherY][otherX] instanceof Gem && this.grid[dragStartY][dragStartX].color != this.grid[otherY][otherX].color) {
+                        const gem1 = this.grid[dragStartY][dragStartX];
+                        const gem2 = this.grid[otherY][otherX];
+                        const hypotheticalGrid = this.copyGrid(this.grid);
+                        hypotheticalGrid[dragStartY][dragStartX] = gem2;
+                        hypotheticalGrid[otherY][otherX] = gem1;
+                        let firstUpdateTime = this.getFirstUpdateTime(hypotheticalGrid);
+                        if (firstUpdateTime === null) {
+                            firstUpdateTime = 0;
+                        }
+
+                        while (firstUpdateTime !== null) {
+                            this.updateGridOnce(hypotheticalGrid, firstUpdateTime);
+                            for (let y = 0; y < this.gridSize; y++) {
+                                for (let x = 0; x < this.gridSize; x++) {
+                                    if (hypotheticalGrid[y][x] instanceof ShrinkingGem) {
+                                        const id = hypotheticalGrid[y][x].id;
+                                        if (id == gem1.id || id == gem2.id) {
+                                            this.move = {
+                                                x: dragStartX,
+                                                y: dragStartY,
+                                                direction: direction,
+                                            }
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+
+                            firstUpdateTime = this.getFirstUpdateTime(hypotheticalGrid);
                         }
                     }
                 }
-
-                this.dragStart = null;
             }
         }
         return;
@@ -805,7 +830,7 @@ export class Game extends Phaser.Scene {
             for (let x = 0; x < this.gridSize; x++) {
                 if (oldGrid === null) {
                     const gem = new Gem();
-                    gem.color = Math.floor(Math.random() * 7)
+                    gem.color = Math.floor(Math.random() * this.colorCount)
                     row.push(gem);
                 } else {
                     row.push(oldGrid[y][x]);
@@ -827,8 +852,10 @@ export class Game extends Phaser.Scene {
                     grid[y][x] = gem;
                 } else if (grid[y][x] instanceof FallingGem && grid[y][x].arrivalTime <= time) {
                     if (y < this.gridSize - 1 && grid[y + 1][x] instanceof Hole) {
-                        grid[y + 1][x] = grid[y][x];
-                        grid[y + 1][x].arrivalTime += FallingGem.DURATION;
+                        const gem = new FallingGem(grid[y][x].id);
+                        gem.color = grid[y][x].color;
+                        gem.arrivalTime = grid[y][x].arrivalTime + FallingGem.DURATION;
+                        grid[y + 1][x] = gem;
                         grid[y][x] = new Hole();
                     } else {
                         const gem = new Gem(grid[y][x].id);
@@ -867,7 +894,7 @@ export class Game extends Phaser.Scene {
                 if (grid[y][x] instanceof Hole) {
                     if (y <= 0) {
                         const fallingGem = new FallingGem();
-                        fallingGem.color = Math.floor(Math.random() * 7);
+                        fallingGem.color = Math.floor(Math.random() * this.colorCount);
                         fallingGem.arrivalTime = time + FallingGem.DURATION;
                         grid[y][x] = fallingGem;
                     } else if (grid[y - 1][x] instanceof Gem) {
