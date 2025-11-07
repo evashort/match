@@ -18,6 +18,21 @@ export class Gem extends Piece {
     }
 }
 
+export class ShrinkingGem extends Piece {
+    static DURATION = 250;
+    color;
+    arrivalTime;
+    constructor(id = null) {
+        super(id);
+    }
+}
+
+export class Hole extends Piece {
+    constructor(id = null) {
+        super(id);
+    }
+}
+
 export const Direction = {
     LEFT: 0,
     UP: 1,

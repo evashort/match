@@ -1,4 +1,4 @@
-import { Gem, Direction, SlidingGem } from '../lib/Piece.js';
+import { Gem, Direction, SlidingGem, ShrinkingGem, Hole } from '../lib/Piece.js';
 
 export class Game extends Phaser.Scene {
     constructor() {
@@ -698,7 +698,8 @@ export class Game extends Phaser.Scene {
                             this.boardOffsetY + (newY + 0.5) * this.tileSize,
                             this.tileSize,
                             this.tileSize,
-                            [0xff0000, 0x00ff00, 0x0000ff][newPiece.color],
+                            // https://tsitsul.in/blog/coloropt/
+                            [0x4053d3, 0xddb310, 0xb51d14, 0x00beff, 0xfb49b0, 0x00b25d, 0xcacaca][newPiece.color],
                         );
                     }
                 } else if (newPos === null) {
@@ -706,7 +707,7 @@ export class Game extends Phaser.Scene {
                 } else {
                     const [oldX, oldY] = oldPos;
                     const [newX, newY] = newPos;
-                    if (oldGrid[oldY][oldX] instanceof SlidingGem && newGrid[newY][newX] instanceof Gem) {
+                    if (oldGrid[oldY][oldX] instanceof SlidingGem && (newGrid[newY][newX] instanceof Gem || newGrid[newY][newX] instanceof ShrinkingGem)) {
                         this.idSprites[id].x = this.boardOffsetX + (newX + 0.5) * this.tileSize;
                         this.idSprites[id].y = this.boardOffsetY + (newY + 0.5) * this.tileSize;
                     }
@@ -725,42 +726,23 @@ export class Game extends Phaser.Scene {
                     } else {
                         sprite.x = this.boardOffsetX + (x + 0.5 + (gem.direction == Direction.LEFT ? 1 : -1) * remainder) * this.tileSize;
                     }
+                } else if (this.grid[y][x] instanceof ShrinkingGem) {
+                    const gem = this.grid[y][x];
+                    const sprite = this.idSprites[gem.id];
+                    const remainder = (gem.arrivalTime - time) / ShrinkingGem.DURATION;
+                    sprite.setScale(remainder);
                 }
             }
         }
     }
 
     updateGrid(oldGrid, time, move) {
-        if (oldGrid !== null && move === null) {
-            let anyExpired = false;
-            for (let y = 0; y < this.gridSize; y++) {
-                for (let x = 0; x < this.gridSize; x++) {
-                    if (oldGrid[y][x] instanceof SlidingGem && oldGrid[y][x].arrivalTime <= time) {
-                        anyExpired = true;
-                    }
-                }
-            }
-
-            if (!anyExpired) {
-                return null;
-            }
+        let firstUpdateTime = this.getFirstUpdateTime(oldGrid);
+        if (oldGrid !== null && move === null && (firstUpdateTime === null || firstUpdateTime > time)) {
+            return null;
         }
 
-        const newGrid = [];
-        for (let y = 0; y < this.gridSize; y++) {
-            const row = [];
-            for (let x = 0; x < this.gridSize; x++) {
-                if (oldGrid === null) {
-                    const gem = new Gem();
-                    gem.color = Math.floor(Math.random() * 3)
-                    row.push(gem);
-                } else {
-                    row.push(oldGrid[y][x]);
-                }
-            }
-
-            newGrid.push(row);
-        }
+        const newGrid = this.copyGrid(oldGrid);
 
         if (move !== null) {
             const gem = new SlidingGem(newGrid[move.y][move.x].id);
@@ -777,16 +759,106 @@ export class Game extends Phaser.Scene {
             newGrid[otherY][otherX] = gem;
         }
 
+        while (firstUpdateTime !== null && firstUpdateTime <= time) {
+            this.updateGridOnce(newGrid, firstUpdateTime);
+            firstUpdateTime = this.getFirstUpdateTime(newGrid);
+        }
+
+        return newGrid;
+    }
+
+    getFirstUpdateTime(grid) {
+        if (grid === null) {
+            return null;
+        }
+
+        let firstUpdateTime = null;
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
-                if (newGrid[y][x] instanceof SlidingGem && newGrid[y][x].arrivalTime <= time) {
-                    const gem = new Gem(newGrid[y][x].id);
-                    gem.color = newGrid[y][x].color;
-                    newGrid[y][x] = gem;
+                if (grid[y][x] instanceof SlidingGem) {
+                    if (firstUpdateTime === null || grid[y][x].arrivalTime < firstUpdateTime) {
+                        firstUpdateTime = grid[y][x].arrivalTime;
+                    }
+                } else if (grid[y][x] instanceof ShrinkingGem) {
+                    if (firstUpdateTime === null || grid[y][x].arrivalTime < firstUpdateTime) {
+                        firstUpdateTime = grid[y][x].arrivalTime;
+                    }
                 }
             }
         }
 
+        return firstUpdateTime;
+    }
+
+    copyGrid(oldGrid) {
+        const newGrid = []
+        for (let y = 0; y < this.gridSize; y++) {
+            const row = [];
+            for (let x = 0; x < this.gridSize; x++) {
+                if (oldGrid === null) {
+                    const gem = new Gem();
+                    gem.color = Math.floor(Math.random() * 7)
+                    row.push(gem);
+                } else {
+                    row.push(oldGrid[y][x]);
+                }
+            }
+
+            newGrid.push(row);
+        }
+
         return newGrid;
+    }
+
+    updateGridOnce(grid, time) {
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                if (grid[y][x] instanceof SlidingGem && grid[y][x].arrivalTime <= time) {
+                    const gem = new Gem(grid[y][x].id);
+                    gem.color = grid[y][x].color;
+                    grid[y][x] = gem;
+                } else if (grid[y][x] instanceof ShrinkingGem && grid[y][x].arrivalTime <= time) {
+                    grid[y][x] = new Hole();
+                }
+            }
+        }
+
+        for (let y = 0; y < this.gridSize; y++) {
+            for (let x = 0; x < this.gridSize; x++) {
+                const shape = this.getShape(grid, x, y);
+                if (shape == 'xxx') {
+                    for (let shapeX = x; shapeX < x + 3; shapeX++) {
+                        const gem = new ShrinkingGem(grid[y][shapeX].id);
+                        gem.color = grid[y][shapeX].color;
+                        gem.arrivalTime = time + ShrinkingGem.DURATION;
+                        grid[y][shapeX] = gem;
+                    }
+                } else if (shape == 'x\nx\nx') {
+                    for (let shapeY = y; shapeY < y + 3; shapeY++) {
+                        const gem = new ShrinkingGem(grid[shapeY][x].id);
+                        gem.color = grid[shapeY][x].color;
+                        gem.arrivalTime = time + ShrinkingGem.DURATION;
+                        grid[shapeY][x] = gem;
+                    }
+                }
+            }
+        }
+    }
+
+    getShape(grid, x, y) {
+        if (!(grid[y][x] instanceof Gem)) {
+            return null;
+        }
+
+        const color = grid[y][x].color;
+        if (x < this.gridSize - 2 && grid[y][x + 1] instanceof Gem && grid[y][x + 1].color === color && grid[y][x + 2] instanceof Gem && grid[y][x + 2].color === color) {
+            return 'xxx';
+        }
+
+        if (y < this.gridSize - 2 && grid[y + 1][x] instanceof Gem && grid[y + 1][x].color === color && grid[y + 2][x] instanceof Gem && grid[y + 2][x].color === color) {
+            return 'x\nx\nx';
+        }
+
+        return null;
     }
 }
