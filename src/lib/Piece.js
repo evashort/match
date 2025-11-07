@@ -27,6 +27,15 @@ export class ShrinkingGem extends Piece {
     }
 }
 
+export class FallingGem extends Piece {
+    static DURATION = 250;
+    color;
+    arrivalTime;
+    constructor(id = null) {
+        super(id);
+    }
+}
+
 export class Hole extends Piece {
     constructor(id = null) {
         super(id);

@@ -1,4 +1,4 @@
-import { Gem, Direction, SlidingGem, ShrinkingGem, Hole } from '../lib/Piece.js';
+import { Gem, Direction, SlidingGem, ShrinkingGem, FallingGem, Hole } from '../lib/Piece.js';
 
 export class Game extends Phaser.Scene {
     constructor() {
@@ -692,7 +692,7 @@ export class Game extends Phaser.Scene {
                 if (oldPos === null) {
                     const [newX, newY] = newPos;
                     const newPiece = newGrid[newY][newX];
-                    if (newPiece instanceof Gem || newPiece instanceof SlidingGem) {
+                    if (newPiece instanceof Gem || newPiece instanceof SlidingGem || newPiece instanceof FallingGem || newPiece instanceof ShrinkingGem) {
                         this.idSprites[id] = this.add.ellipse(
                             this.boardOffsetX + (newX + 0.5) * this.tileSize,
                             this.boardOffsetY + (newY + 0.5) * this.tileSize,
@@ -707,7 +707,7 @@ export class Game extends Phaser.Scene {
                 } else {
                     const [oldX, oldY] = oldPos;
                     const [newX, newY] = newPos;
-                    if (oldGrid[oldY][oldX] instanceof SlidingGem && (newGrid[newY][newX] instanceof Gem || newGrid[newY][newX] instanceof ShrinkingGem)) {
+                    if ((oldGrid[oldY][oldX] instanceof SlidingGem || oldGrid[oldY][oldX] instanceof FallingGem) && (newGrid[newY][newX] instanceof Gem || newGrid[newY][newX] instanceof ShrinkingGem)) {
                         this.idSprites[id].x = this.boardOffsetX + (newX + 0.5) * this.tileSize;
                         this.idSprites[id].y = this.boardOffsetY + (newY + 0.5) * this.tileSize;
                     }
@@ -731,6 +731,11 @@ export class Game extends Phaser.Scene {
                     const sprite = this.idSprites[gem.id];
                     const remainder = (gem.arrivalTime - time) / ShrinkingGem.DURATION;
                     sprite.setScale(remainder);
+                } else if (this.grid[y][x] instanceof FallingGem) {
+                    const gem = this.grid[y][x];
+                    const sprite = this.idSprites[gem.id];
+                    const remainder = (gem.arrivalTime - time) / FallingGem.DURATION;
+                    sprite.y = this.boardOffsetY + (y + 0.5 - remainder) * this.tileSize;
                 }
             }
         }
@@ -775,11 +780,7 @@ export class Game extends Phaser.Scene {
         let firstUpdateTime = null;
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
-                if (grid[y][x] instanceof SlidingGem) {
-                    if (firstUpdateTime === null || grid[y][x].arrivalTime < firstUpdateTime) {
-                        firstUpdateTime = grid[y][x].arrivalTime;
-                    }
-                } else if (grid[y][x] instanceof ShrinkingGem) {
+                if (grid[y][x] instanceof SlidingGem || grid[y][x] instanceof ShrinkingGem || grid[y][x] instanceof FallingGem) {
                     if (firstUpdateTime === null || grid[y][x].arrivalTime < firstUpdateTime) {
                         firstUpdateTime = grid[y][x].arrivalTime;
                     }
@@ -813,12 +814,25 @@ export class Game extends Phaser.Scene {
     updateGridOnce(grid, time) {
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
-                if (grid[y][x] instanceof SlidingGem && grid[y][x].arrivalTime <= time) {
+                if ((grid[y][x] instanceof SlidingGem || grid[y][x] instanceof FallingGem) && grid[y][x].arrivalTime <= time) {
                     const gem = new Gem(grid[y][x].id);
                     gem.color = grid[y][x].color;
                     grid[y][x] = gem;
                 } else if (grid[y][x] instanceof ShrinkingGem && grid[y][x].arrivalTime <= time) {
-                    grid[y][x] = new Hole();
+                    if (y <= 0) {
+                        grid[y][x] = new Hole();
+                    } else {
+                        const gem = grid[y - 1][x];
+                        if (gem instanceof Gem) {
+                            grid[y - 1][x] = new Hole();
+                            const fallingGem = new FallingGem(gem.id);
+                            fallingGem.color = gem.color;
+                            fallingGem.arrivalTime = time + FallingGem.DURATION;
+                            grid[y][x] = fallingGem;
+                        } else {
+                            grid[y][x] = new Hole();
+                        }
+                    }
                 }
             }
         }
