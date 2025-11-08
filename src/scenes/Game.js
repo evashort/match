@@ -6,10 +6,11 @@ export class Game extends Phaser.Scene {
 
         this.gridSize = 6; // 6x6 grid
         this.tileSize = 50; // Size of each grid cell
+        this.moveThreshold = 20;
         this.colorCount = 4;
         this.cars = [];
         this.selectedVehicle = null;
-        this.dragStart = null;
+        this.pointer = null;
         this.move = null;
         this.level = 1;
         this.grid = null;
@@ -332,10 +333,8 @@ export class Game extends Phaser.Scene {
     }
 
     onPointerDown(pointer) {
-        this.dragStart = [
-            Math.floor((pointer.x - this.boardOffsetX) / this.tileSize),
-            Math.floor((pointer.y - this.boardOffsetY) / this.tileSize),
-        ];
+        this.pointer = pointer;
+        this.move = null;
         return;
         let clickedCar = null;
 
@@ -378,11 +377,25 @@ export class Game extends Phaser.Scene {
     }
 
     onPointerMove(pointer) {
-        if (this.dragStart != null) {
+        if (this.pointer !== null && pointer.id === this.pointer.id) {
+            const [magnitude, direction] = this.getMagnitudeAndDirection(this.pointer);
+            if (magnitude > this.moveThreshold) {
+                const [x, y] = this.getDragStart(this.pointer);
+                const maxProgress = (this.pointer.moveTime - this.pointer.downTime) / SlidingGem.DURATION;
+                const progress = Math.min(magnitude / this.tileSize, 1, maxProgress);
+                this.move = {
+                    x: x,
+                    y: y,
+                    direction: direction,
+                    progress: progress,
+                };
+            }
+
+            return;
             const [dragStartX, dragStartY] = this.dragStart;
             const dragStopX = Math.floor((pointer.x - this.boardOffsetX) / this.tileSize);
             const dragStopY = Math.floor((pointer.y - this.boardOffsetY) / this.tileSize);
-            if (dragStopX != dragStartX || dragStopY != dragStartY) {
+            if (dragStopX !== dragStartX || dragStopY !== dragStartY) {
                 this.dragStart = null;
                 const dragStartCenterX = this.boardOffsetX + (dragStartX + 0.5) * this.tileSize;
                 const dragStartCenterY = this.boardOffsetY + (dragStartY + 0.5) * this.tileSize;
@@ -412,7 +425,7 @@ export class Game extends Phaser.Scene {
                 if (direction !== null) {
                     const otherX = dragStartX + (direction === Direction.RIGHT) - (direction === Direction.LEFT);
                     const otherY = dragStartY + (direction === Direction.DOWN) - (direction === Direction.UP);
-                    if (this.grid[dragStartY][dragStartX] instanceof Gem && this.grid[otherY][otherX] instanceof Gem && this.grid[dragStartY][dragStartX].color != this.grid[otherY][otherX].color) {
+                    if (this.grid[dragStartY][dragStartX] instanceof Gem && this.grid[otherY][otherX] instanceof Gem && this.grid[dragStartY][dragStartX].color !== this.grid[otherY][otherX].color) {
                         const gem1 = this.grid[dragStartY][dragStartX];
                         const gem2 = this.grid[otherY][otherX];
                         const hypotheticalGrid = this.copyGrid(this.grid);
@@ -479,13 +492,42 @@ export class Game extends Phaser.Scene {
     }
 
     onPointerUp(pointer) {
-        this.dragStart = null;
+        if (this.pointer !== null && pointer.id === this.pointer.id) {
+            this.pointer = null;
+        }
+
         return;
         if (!this.selectedVehicle) return;
 
         this.checkCarShouldExit(this.selectedVehicle);
 
         this.selectedVehicle = null;
+    }
+
+    getMagnitudeAndDirection(pointer) {
+        const xDelta = pointer.x - pointer.downX;
+        const yDelta = pointer.y - pointer.downY;
+        const xMagnitude = Math.abs(xDelta);
+        const yMagnitude = Math.abs(yDelta);
+        if (xMagnitude > yMagnitude) {
+            if (xDelta > 0) {
+                return [xMagnitude, Direction.RIGHT];
+            } else {
+                return [xMagnitude, Direction.LEFT];
+            }
+        } else {
+            if (yDelta > 0) {
+                return [yMagnitude, Direction.DOWN];
+            } else {
+                return [yMagnitude, Direction.UP];
+            }
+        }
+    }
+
+    getDragStart(pointer) {
+        const x = Math.floor((pointer.downX - this.boardOffsetX) / this.tileSize);
+        const y = Math.floor((pointer.downY - this.boardOffsetY) / this.tileSize);
+        return [x, y];
     }
 
     tryMoveSelectedCar(deltaX, deltaY) {
@@ -687,8 +729,26 @@ export class Game extends Phaser.Scene {
     }
 
     update(time, delta) {
-        const newGrid = this.updateGrid(this.grid, time, this.move);
-        this.move = null;
+        if (this.pointer !== null) {
+            const [magnitude, direction] = this.getMagnitudeAndDirection(this.pointer);
+            if (magnitude > this.moveThreshold) {
+                const [x, y] = this.getDragStart(this.pointer);
+                const maxProgress = (time - this.pointer.downTime) / SlidingGem.DURATION;
+                const progress = Math.min(magnitude / this.tileSize, 1, maxProgress);
+                this.move = {
+                    x: x,
+                    y: y,
+                    direction: direction,
+                    progress: progress,
+                };
+            }
+        }
+        const [newGrid, newMove] = this.updateGrid(this.grid, time, this.move);
+        if (this.move !== null && newMove === null) {
+            this.pointer = null;
+            this.move = null;
+        }
+
         if (newGrid !== null) {
             const oldGrid = this.grid;
             this.grid = newGrid;
@@ -768,6 +828,29 @@ export class Game extends Phaser.Scene {
                     const sprite = this.idSprites[gem.id];
                     const remainder = (gem.arrivalTime - time) / FallingGem.DURATION;
                     sprite.y = this.boardOffsetY + (y + 0.5 - remainder) * this.tileSize;
+                } else if (this.grid[y][x] instanceof Gem) {
+                    const sprite = this.idSprites[this.grid[y][x].id];
+                    sprite.x = this.boardOffsetX + (x + 0.5) * this.tileSize;
+                    sprite.y = this.boardOffsetY + (y + 0.5) * this.tileSize;
+                }
+            }
+        }
+
+        if (this.pointer !== null) {
+            const [x, y] = this.getDragStart(this.pointer);
+            if (x >= 0 && x < this.gridSize && y >= 0 && y < this.gridSize && this.grid[y][x] instanceof Gem) {
+                let [magnitude, direction] = this.getMagnitudeAndDirection(this.pointer);
+                const maxMagnitude = this.tileSize * (time - this.pointer.downTime) / SlidingGem.DURATION;
+                magnitude = Math.min(magnitude, this.tileSize, maxMagnitude);
+                const sprite = this.idSprites[this.grid[y][x].id];
+                if (direction === Direction.LEFT) {
+                    sprite.x = this.boardOffsetX + (x + 0.5) * this.tileSize - magnitude;
+                } else if (direction === Direction.UP) {
+                    sprite.y = this.boardOffsetY + (y + 0.5) * this.tileSize - magnitude;
+                } else if (direction === Direction.RIGHT) {
+                    sprite.x = this.boardOffsetX + (x + 0.5) * this.tileSize + magnitude;
+                } else if (direction === Direction.DOWN) {
+                    sprite.y = this.boardOffsetY + (y + 0.5) * this.tileSize + magnitude;
                 }
             }
         }
@@ -776,24 +859,27 @@ export class Game extends Phaser.Scene {
     updateGrid(oldGrid, time, move) {
         let firstUpdateTime = this.getFirstUpdateTime(oldGrid);
         if (oldGrid !== null && move === null && (firstUpdateTime === null || firstUpdateTime > time)) {
-            return null;
+            return [null, null];
         }
 
         const newGrid = this.copyGrid(oldGrid);
 
         if (move !== null) {
-            const gem = new SlidingGem(newGrid[move.y][move.x].id);
-            gem.color = newGrid[move.y][move.x].color;
-            gem.arrivalTime = time + SlidingGem.DURATION;
-            gem.direction = move.direction;
             const otherX = move.x + (move.direction === Direction.RIGHT) - (move.direction === Direction.LEFT);
             const otherY = move.y + (move.direction === Direction.DOWN) - (move.direction === Direction.UP);
-            const otherGem = new SlidingGem(newGrid[otherY][otherX].id);
-            otherGem.color = newGrid[otherY][otherX].color;
-            otherGem.arrivalTime = time + SlidingGem.DURATION;
-            otherGem.direction = (move.direction === Direction.LEFT ? Direction.RIGHT : move.direction === Direction.UP ? Direction.DOWN : move.direction == Direction.RIGHT ? Direction.LEFT : Direction.UP);
-            newGrid[move.y][move.x] = otherGem;
-            newGrid[otherY][otherX] = gem;
+            if (otherX >= 0 && otherX < this.gridSize && otherY >= 0 && otherY < this.gridSize && oldGrid[move.y][move.x] instanceof Gem && oldGrid[otherY][otherX] instanceof Gem) {
+                const gem = new SlidingGem(newGrid[move.y][move.x].id);
+                gem.color = newGrid[move.y][move.x].color;
+                gem.arrivalTime = time + SlidingGem.DURATION * (1 - move.progress);
+                gem.direction = move.direction;
+                const otherGem = new SlidingGem(newGrid[otherY][otherX].id);
+                otherGem.color = newGrid[otherY][otherX].color;
+                otherGem.arrivalTime = time + SlidingGem.DURATION * (1 - move.progress);
+                otherGem.direction = (move.direction === Direction.LEFT ? Direction.RIGHT : move.direction === Direction.UP ? Direction.DOWN : move.direction == Direction.RIGHT ? Direction.LEFT : Direction.UP);
+                newGrid[move.y][move.x] = otherGem;
+                newGrid[otherY][otherX] = gem;
+                move = null;
+            }
         }
 
         while (firstUpdateTime !== null && firstUpdateTime <= time) {
@@ -801,7 +887,7 @@ export class Game extends Phaser.Scene {
             firstUpdateTime = this.getFirstUpdateTime(newGrid);
         }
 
-        return newGrid;
+        return [newGrid, move];
     }
 
     getFirstUpdateTime(grid) {
