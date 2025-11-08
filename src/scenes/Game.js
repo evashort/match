@@ -13,6 +13,7 @@ export class Game extends Phaser.Scene {
         this.pointer = null;
         this.draggedId = null;
         this.move = null;
+        this.moveLegal = null;
         this.level = 1;
         this.grid = null;
         this.idSprites = {};
@@ -339,6 +340,7 @@ export class Game extends Phaser.Scene {
             this.pointer = pointer;
             this.draggedId = this.grid[y][x].id;
             this.move = null;
+            this.moveLegal = null;
         }
 
         return;
@@ -387,6 +389,10 @@ export class Game extends Phaser.Scene {
             const [magnitude, direction] = this.getMagnitudeAndDirection(this.pointer);
             if (magnitude > this.moveThreshold) {
                 const [x, y] = this.getDragStart(this.pointer);
+                if (this.move !== null && (this.move.x !== x || this.move.y !== y || this.move.direction !== direction || this.move.id !== this.draggedId)) {
+                    this.moveLegal = null;
+                }
+
                 const maxProgress = (this.pointer.moveTime - this.pointer.downTime) / SlidingGem.DURATION;
                 const progress = Math.min(magnitude / this.tileSize, 1, maxProgress);
                 this.move = {
@@ -753,7 +759,18 @@ export class Game extends Phaser.Scene {
             }
         }
 
-        const [newGrid, newMove] = this.updateGrid(this.grid, time, this.move);
+        if (this.move !== null && this.moveLegal === null) {
+            this.moveLegal = this.isMoveLegal(this.grid, time, this.move)
+        }
+
+        let newGrid = null;
+        let newMove = this.move;
+        if (this.move !== null && this.moveLegal) {
+            [newGrid, newMove] = this.updateGrid(this.grid, time, this.move);
+        } else {
+            [newGrid] = this.updateGrid(this.grid, time, null);
+        }
+        
         if (this.move !== null && newMove === null) {
             this.pointer = null;
             this.draggedId = null;
@@ -763,6 +780,10 @@ export class Game extends Phaser.Scene {
         if (newGrid !== null) {
             const oldGrid = this.grid;
             this.grid = newGrid;
+            if (this.move !== null) {
+                this.moveLegal = null;
+            }
+
             const idChanges = {};
             for (let y = 0; y < this.gridSize; y++) {
                 for (let x = 0; x < this.gridSize; x++) {
@@ -887,12 +908,12 @@ export class Game extends Phaser.Scene {
 
     updateGrid(oldGrid, time, move) {
         let firstUpdateTime = this.getFirstUpdateTime(oldGrid);
-        if (firstUpdateTime === null && move !== null) {
-            firstUpdateTime = time;
-        }
-
-        if (oldGrid !== null && (firstUpdateTime === null || firstUpdateTime > time)) {
-            return [null, move];
+        if (firstUpdateTime === null || firstUpdateTime > time) {
+            if (move !== null) {
+                firstUpdateTime = time;
+            } else if (oldGrid !== null) {
+                return [null, move];
+            }
         }
 
         const newGrid = this.copyGrid(oldGrid);
@@ -903,6 +924,53 @@ export class Game extends Phaser.Scene {
         }
 
         return [newGrid, move];
+    }
+
+    isMoveLegal(grid, time, move) {
+        if (grid[move.y][move.x].id != move.id) {
+            return false;
+        }
+
+        const otherX = move.x + (move.direction === Direction.RIGHT) - (move.direction === Direction.LEFT);
+        const otherY = move.y + (move.direction === Direction.DOWN) - (move.direction === Direction.UP);
+        if (otherX < 0 || otherX >= this.gridSize || otherY < 0 || otherY >= this.gridSize) {
+            return false;
+        }
+
+        let firstUpdateTime = this.getFirstUpdateTime(grid);
+        if (firstUpdateTime === null || firstUpdateTime > time) {
+            firstUpdateTime = time;
+        }
+
+        const hypotheticalGrid = this.copyGrid(grid);
+        const id1 = move.id;
+        let id2 = null;
+        while (firstUpdateTime !== null && firstUpdateTime <= time && move !== null) {
+            id2 = hypotheticalGrid[otherY][otherX].id;
+            move = this.updateGridOnce(hypotheticalGrid, firstUpdateTime, move);
+            firstUpdateTime = this.getFirstUpdateTime(hypotheticalGrid);
+        }
+
+        if (move !== null) {
+            return false;
+        }
+
+        while (true) {
+            for (let y = 0; y < this.gridSize; y++) {
+                for (let x = 0; x < this.gridSize; x++) {
+                    if (hypotheticalGrid[y][x] instanceof ShrinkingGem && (hypotheticalGrid[y][x].id === id1 || hypotheticalGrid[y][x].id === id2)) {
+                        return true;
+                    }
+                }
+            }
+
+            if (firstUpdateTime === null) {
+                return false;
+            }
+
+            this.updateGridOnce(hypotheticalGrid, firstUpdateTime, null);
+            firstUpdateTime = this.getFirstUpdateTime(hypotheticalGrid);
+        }
     }
 
     getFirstUpdateTime(grid) {
@@ -976,7 +1044,7 @@ export class Game extends Phaser.Scene {
         if (move !== null && grid[move.y][move.x] instanceof Gem) {
             const otherX = move.x + (move.direction === Direction.RIGHT) - (move.direction === Direction.LEFT);
             const otherY = move.y + (move.direction === Direction.DOWN) - (move.direction === Direction.UP);
-            if (otherX >= 0 && otherX < this.gridSize && otherY >= 0 && otherY < this.gridSize && grid[otherY][otherX] instanceof Gem) {
+            if (otherX >= 0 && otherX < this.gridSize && otherY >= 0 && otherY < this.gridSize && grid[otherY][otherX] instanceof Gem && grid[move.y][move.x].color !== grid[otherY][otherX].color) {
                 const gem = new SlidingGem(grid[move.y][move.x].id);
                 gem.color = grid[move.y][move.x].color;
                 gem.arrivalTime = time + SlidingGem.DURATION * (1 - move.progress);
