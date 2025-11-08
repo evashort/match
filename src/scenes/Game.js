@@ -394,6 +394,7 @@ export class Game extends Phaser.Scene {
                     y: y,
                     direction: direction,
                     progress: progress,
+                    id: this.draggedId,
                 };
             }
 
@@ -747,11 +748,8 @@ export class Game extends Phaser.Scene {
                     y: y,
                     direction: direction,
                     progress: progress,
+                    id: this.draggedId,
                 };
-            }
-
-            if (this.grid[y][x].id !== this.draggedId) {
-                this.move = null;
             }
         }
 
@@ -889,32 +887,18 @@ export class Game extends Phaser.Scene {
 
     updateGrid(oldGrid, time, move) {
         let firstUpdateTime = this.getFirstUpdateTime(oldGrid);
-        if (oldGrid !== null && move === null && (firstUpdateTime === null || firstUpdateTime > time)) {
-            return [null, null];
+        if (firstUpdateTime === null && move !== null) {
+            firstUpdateTime = time;
+        }
+
+        if (oldGrid !== null && (firstUpdateTime === null || firstUpdateTime > time)) {
+            return [null, move];
         }
 
         const newGrid = this.copyGrid(oldGrid);
 
-        if (move !== null) {
-            const otherX = move.x + (move.direction === Direction.RIGHT) - (move.direction === Direction.LEFT);
-            const otherY = move.y + (move.direction === Direction.DOWN) - (move.direction === Direction.UP);
-            if (otherX >= 0 && otherX < this.gridSize && otherY >= 0 && otherY < this.gridSize && oldGrid[move.y][move.x] instanceof Gem && oldGrid[otherY][otherX] instanceof Gem) {
-                const gem = new SlidingGem(newGrid[move.y][move.x].id);
-                gem.color = newGrid[move.y][move.x].color;
-                gem.arrivalTime = time + SlidingGem.DURATION * (1 - move.progress);
-                gem.direction = move.direction;
-                const otherGem = new SlidingGem(newGrid[otherY][otherX].id);
-                otherGem.color = newGrid[otherY][otherX].color;
-                otherGem.arrivalTime = time + SlidingGem.DURATION * (1 - move.progress);
-                otherGem.direction = (move.direction === Direction.LEFT ? Direction.RIGHT : move.direction === Direction.UP ? Direction.DOWN : move.direction == Direction.RIGHT ? Direction.LEFT : Direction.UP);
-                newGrid[move.y][move.x] = otherGem;
-                newGrid[otherY][otherX] = gem;
-                move = null;
-            }
-        }
-
         while (firstUpdateTime !== null && firstUpdateTime <= time) {
-            this.updateGridOnce(newGrid, firstUpdateTime);
+            move = this.updateGridOnce(newGrid, firstUpdateTime, move);
             firstUpdateTime = this.getFirstUpdateTime(newGrid);
         }
 
@@ -960,7 +944,7 @@ export class Game extends Phaser.Scene {
         return newGrid;
     }
 
-    updateGridOnce(grid, time) {
+    updateGridOnce(grid, time, move) {
         for (let y = this.gridSize - 1; y >= 0; y--) {
             for (let x = 0; x < this.gridSize; x++) {
                 if (grid[y][x] instanceof SlidingGem && grid[y][x].arrivalTime <= time) {
@@ -982,6 +966,28 @@ export class Game extends Phaser.Scene {
                 } else if (grid[y][x] instanceof ShrinkingGem && grid[y][x].arrivalTime <= time) {
                     grid[y][x] = new Hole();
                 }
+            }
+        }
+
+        if (move !== null && grid[move.y][move.x].id !== move.id) {
+            move = null;
+        }
+
+        if (move !== null && grid[move.y][move.x] instanceof Gem) {
+            const otherX = move.x + (move.direction === Direction.RIGHT) - (move.direction === Direction.LEFT);
+            const otherY = move.y + (move.direction === Direction.DOWN) - (move.direction === Direction.UP);
+            if (otherX >= 0 && otherX < this.gridSize && otherY >= 0 && otherY < this.gridSize && grid[otherY][otherX] instanceof Gem) {
+                const gem = new SlidingGem(grid[move.y][move.x].id);
+                gem.color = grid[move.y][move.x].color;
+                gem.arrivalTime = time + SlidingGem.DURATION * (1 - move.progress);
+                gem.direction = move.direction;
+                const otherGem = new SlidingGem(grid[otherY][otherX].id);
+                otherGem.color = grid[otherY][otherX].color;
+                otherGem.arrivalTime = time + SlidingGem.DURATION * (1 - move.progress);
+                otherGem.direction = (move.direction === Direction.LEFT ? Direction.RIGHT : move.direction === Direction.UP ? Direction.DOWN : move.direction == Direction.RIGHT ? Direction.LEFT : Direction.UP);
+                grid[move.y][move.x] = otherGem;
+                grid[otherY][otherX] = gem;
+                move = null;
             }
         }
 
@@ -1025,6 +1031,8 @@ export class Game extends Phaser.Scene {
                 }
             }
         }
+
+        return move;
     }
 
     getShape(grid, x, y) {
