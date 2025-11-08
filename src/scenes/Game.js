@@ -11,6 +11,7 @@ export class Game extends Phaser.Scene {
         this.cars = [];
         this.selectedVehicle = null;
         this.pointer = null;
+        this.draggedId = null;
         this.move = null;
         this.level = 1;
         this.grid = null;
@@ -333,8 +334,13 @@ export class Game extends Phaser.Scene {
     }
 
     onPointerDown(pointer) {
-        this.pointer = pointer;
-        this.move = null;
+        const [x, y] = this.getDragStart(pointer);
+        if (x >= 0 && x < this.gridSize && y >= 0 && y < this.gridSize) {
+            this.pointer = pointer;
+            this.draggedId = this.grid[y][x].id;
+            this.move = null;
+        }
+
         return;
         let clickedCar = null;
 
@@ -494,6 +500,7 @@ export class Game extends Phaser.Scene {
     onPointerUp(pointer) {
         if (this.pointer !== null && pointer.id === this.pointer.id) {
             this.pointer = null;
+            this.draggedId = null;
         }
 
         return;
@@ -731,8 +738,8 @@ export class Game extends Phaser.Scene {
     update(time, delta) {
         if (this.pointer !== null) {
             const [magnitude, direction] = this.getMagnitudeAndDirection(this.pointer);
+            const [x, y] = this.getDragStart(this.pointer);
             if (magnitude > this.moveThreshold) {
-                const [x, y] = this.getDragStart(this.pointer);
                 const maxProgress = (time - this.pointer.downTime) / SlidingGem.DURATION;
                 const progress = Math.min(magnitude / this.tileSize, 1, maxProgress);
                 this.move = {
@@ -742,10 +749,16 @@ export class Game extends Phaser.Scene {
                     progress: progress,
                 };
             }
+
+            if (this.grid[y][x].id !== this.draggedId) {
+                this.move = null;
+            }
         }
+
         const [newGrid, newMove] = this.updateGrid(this.grid, time, this.move);
         if (this.move !== null && newMove === null) {
             this.pointer = null;
+            this.draggedId = null;
             this.move = null;
         }
 
@@ -814,9 +827,11 @@ export class Game extends Phaser.Scene {
                     const sprite = this.idSprites[gem.id];
                     const remainder = (gem.arrivalTime - time) / SlidingGem.DURATION;
                     if (gem.direction == Direction.UP || gem.direction == Direction.DOWN) {
+                        sprite.x = this.boardOffsetX + (x + 0.5) * this.tileSize;
                         sprite.y = this.boardOffsetY + (y + 0.5 + (gem.direction == Direction.UP ? 1 : -1) * remainder) * this.tileSize;
                     } else {
                         sprite.x = this.boardOffsetX + (x + 0.5 + (gem.direction == Direction.LEFT ? 1 : -1) * remainder) * this.tileSize;
+                        sprite.y = this.boardOffsetY + (y + 0.5) * this.tileSize;
                     }
                 } else if (this.grid[y][x] instanceof ShrinkingGem) {
                     const gem = this.grid[y][x];
@@ -827,6 +842,7 @@ export class Game extends Phaser.Scene {
                     const gem = this.grid[y][x];
                     const sprite = this.idSprites[gem.id];
                     const remainder = (gem.arrivalTime - time) / FallingGem.DURATION;
+                    sprite.x = this.boardOffsetX + (x + 0.5) * this.tileSize;
                     sprite.y = this.boardOffsetY + (y + 0.5 - remainder) * this.tileSize;
                 } else if (this.grid[y][x] instanceof Gem) {
                     const sprite = this.idSprites[this.grid[y][x].id];
@@ -838,19 +854,34 @@ export class Game extends Phaser.Scene {
 
         if (this.pointer !== null) {
             const [x, y] = this.getDragStart(this.pointer);
-            if (x >= 0 && x < this.gridSize && y >= 0 && y < this.gridSize && this.grid[y][x] instanceof Gem) {
+            if (this.grid[y][x].id === this.draggedId && (this.grid[y][x] instanceof Gem || this.grid[y][x] instanceof FallingGem || this.grid[y][x] instanceof SlidingGem)) {
+                const gem = this.grid[y][x];
                 let [magnitude, direction] = this.getMagnitudeAndDirection(this.pointer);
                 const maxMagnitude = this.tileSize * (time - this.pointer.downTime) / SlidingGem.DURATION;
                 magnitude = Math.min(magnitude, this.tileSize, maxMagnitude);
-                const sprite = this.idSprites[this.grid[y][x].id];
+                const sprite = this.idSprites[gem.id];
+                let baseX = this.boardOffsetX + (x + 0.5) * this.tileSize;
+                let baseY = this.boardOffsetY + (y + 0.5) * this.tileSize;
+                if (gem instanceof FallingGem) {
+                    const remainder = (gem.arrivalTime - time) / FallingGem.DURATION;
+                    baseY -= remainder * this.tileSize;
+                } else if (gem instanceof SlidingGem) {
+                    const remainder = (gem.arrivalTime - time) / SlidingGem.DURATION;
+                    if (gem.direction == Direction.UP || gem.direction == Direction.DOWN) {
+                        baseY += (gem.direction == Direction.UP ? 1 : -1) * remainder * this.tileSize;
+                    } else {
+                        baseX += (gem.direction == Direction.LEFT ? 1 : -1) * remainder * this.tileSize;
+                    }
+                }
+
                 if (direction === Direction.LEFT) {
-                    sprite.x = this.boardOffsetX + (x + 0.5) * this.tileSize - magnitude;
+                    sprite.x = baseX - magnitude;
                 } else if (direction === Direction.UP) {
-                    sprite.y = this.boardOffsetY + (y + 0.5) * this.tileSize - magnitude;
+                    sprite.y = baseY - magnitude;
                 } else if (direction === Direction.RIGHT) {
-                    sprite.x = this.boardOffsetX + (x + 0.5) * this.tileSize + magnitude;
+                    sprite.x = baseX + magnitude;
                 } else if (direction === Direction.DOWN) {
-                    sprite.y = this.boardOffsetY + (y + 0.5) * this.tileSize + magnitude;
+                    sprite.y = baseY + magnitude;
                 }
             }
         }
