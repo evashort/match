@@ -1027,22 +1027,10 @@ export class Game extends Phaser.Scene {
     updateGridOnce(grid, time, move) {
         for (let y = this.gridSize - 1; y >= 0; y--) {
             for (let x = 0; x < this.gridSize; x++) {
-                if (grid[y][x] instanceof SlidingGem && grid[y][x].arrivalTime <= time) {
+                if ((grid[y][x] instanceof SlidingGem || grid[y][x] instanceof FallingGem) && grid[y][x].arrivalTime <= time) {
                     const gem = new Gem(grid[y][x].id);
                     gem.color = grid[y][x].color;
                     grid[y][x] = gem;
-                } else if (grid[y][x] instanceof FallingGem && grid[y][x].arrivalTime <= time) {
-                    if (y < this.gridSize - 1 && grid[y + 1][x] instanceof Hole) {
-                        const gem = new FallingGem(grid[y][x].id);
-                        gem.color = grid[y][x].color;
-                        gem.arrivalTime = grid[y][x].arrivalTime + FallingGem.DURATION;
-                        grid[y + 1][x] = gem;
-                        grid[y][x] = new Hole();
-                    } else {
-                        const gem = new Gem(grid[y][x].id);
-                        gem.color = grid[y][x].color;
-                        grid[y][x] = gem;
-                    }
                 } else if (grid[y][x] instanceof ShrinkingGem && grid[y][x].arrivalTime <= time) {
                     grid[y][x] = new Hole();
                 }
@@ -1113,17 +1101,36 @@ export class Game extends Phaser.Scene {
         for (let y = this.gridSize - 1; y >= 0; y--) {
             for (let x = 0; x < this.gridSize; x++) {
                 if (grid[y][x] instanceof Hole) {
-                    if (y <= 0) {
+                    let y2 = y - 1;
+                    for (; y2 >= 0; y2--) {
+                        if (grid[y2][x] instanceof Gem) {
+                            const fallingGem = new FallingGem();
+                            fallingGem.color = grid[y2][x].color;
+                            fallingGem.arrivalTime = time + FallingGem.DURATION * (y - y2);
+                            grid[y][x] = fallingGem;
+                            grid[y2][x] = new Hole();
+                            break;
+                        } else if (grid[y2][x] instanceof FallingGem) {
+                            const fallingGem = new FallingGem();
+                            fallingGem.color = grid[y2][x].color;
+                            fallingGem.arrivalTime = grid[y2][x].arrivalTime + FallingGem.DURATION * (y - y2);
+                            grid[y][x] = fallingGem;
+                            grid[y2][x] = new Hole();
+                            break;
+                        } else if (!(grid[y2][x] instanceof Hole)) {
+                            break;
+                        }
+                    }
+
+                    if (y2 < 0) {
                         const fallingGem = new FallingGem();
                         fallingGem.color = Math.floor(Math.random() * this.colorCount);
-                        fallingGem.arrivalTime = time + FallingGem.DURATION;
-                        grid[y][x] = fallingGem;
-                    } else if (grid[y - 1][x] instanceof Gem) {
-                        const gem = grid[y - 1][x];
-                        grid[y - 1][x] = new Hole();
-                        const fallingGem = new FallingGem(gem.id);
-                        fallingGem.color = gem.color;
-                        fallingGem.arrivalTime = time + FallingGem.DURATION;
+                        if (y < this.gridSize - 1 && grid[y + 1][x] instanceof FallingGem) {
+                            fallingGem.arrivalTime = grid[y + 1][x].arrivalTime;
+                        } else {
+                            fallingGem.arrivalTime = time + FallingGem.DURATION * (y + 1);
+                        }
+
                         grid[y][x] = fallingGem;
                     }
                 }
