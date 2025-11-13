@@ -854,9 +854,9 @@ export class Game extends Phaser.Scene {
                 } else if (this.grid[y][x] instanceof FallingGem) {
                     const gem = this.grid[y][x];
                     const sprite = this.idSprites[gem.id];
-                    const remainder = (gem.arrivalTime - time) / FallingGem.DURATION;
+                    const height = gem.height(time);
                     sprite.x = this.boardOffsetX + (x + 0.5) * this.tileSize;
-                    sprite.y = this.boardOffsetY + (y + 0.5 - remainder) * this.tileSize;
+                    sprite.y = this.boardOffsetY + (y + 0.5 - height) * this.tileSize;
                 } else if (this.grid[y][x] instanceof Gem) {
                     const sprite = this.idSprites[this.grid[y][x].id];
                     sprite.x = this.boardOffsetX + (x + 0.5) * this.tileSize;
@@ -1106,14 +1106,14 @@ export class Game extends Phaser.Scene {
                         if (grid[y2][x] instanceof Gem) {
                             const fallingGem = new FallingGem();
                             fallingGem.color = grid[y2][x].color;
-                            fallingGem.arrivalTime = time + FallingGem.DURATION * (y - y2);
+                            fallingGem.arrivalTime = time + FallingGem.duration(y - y2);
                             grid[y][x] = fallingGem;
                             grid[y2][x] = new Hole();
                             break;
                         } else if (grid[y2][x] instanceof FallingGem) {
                             const fallingGem = new FallingGem();
                             fallingGem.color = grid[y2][x].color;
-                            fallingGem.arrivalTime = grid[y2][x].arrivalTime + FallingGem.DURATION * (y - y2);
+                            fallingGem.arrivalTime = time + FallingGem.duration(y - y2 + grid[y2][x].height(time));
                             grid[y][x] = fallingGem;
                             grid[y2][x] = new Hole();
                             break;
@@ -1128,7 +1128,7 @@ export class Game extends Phaser.Scene {
                         if (y < this.gridSize - 1 && grid[y + 1][x] instanceof FallingGem) {
                             fallingGem.arrivalTime = grid[y + 1][x].arrivalTime;
                         } else {
-                            fallingGem.arrivalTime = time + FallingGem.DURATION * (y + 1);
+                            fallingGem.arrivalTime = time + FallingGem.duration(y + 1);
                         }
 
                         grid[y][x] = fallingGem;

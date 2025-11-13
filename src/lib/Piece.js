@@ -28,11 +28,32 @@ export class ShrinkingGem extends Piece {
 }
 
 export class FallingGem extends Piece {
-    static DURATION = 1000;
+    static DURATIONS = [1000, 1000*.5, 1000*.5**2, 1000*.5**3, 1000*.5**4, 1000*.5**5, 1000*.5**6, 1000*.5**7, 1000*.5**8];
+    static duration(distance) {
+        let result = 0;
+        for (let i = 0; i < distance; i++) {
+            result += FallingGem.DURATIONS[i] * Math.min(distance - i, 1);
+        }
+
+        return result;
+    }
+
     color;
     arrivalTime;
     constructor(id = null) {
         super(id);
+    }
+
+    height(time) {
+        let delta = this.arrivalTime - time;
+        let height = 0;
+        while (delta > FallingGem.DURATIONS[height]) {
+            delta -= FallingGem.DURATIONS[height];
+            height++;
+        }
+
+        height += delta / FallingGem.DURATIONS[height];
+        return height;
     }
 }
 
