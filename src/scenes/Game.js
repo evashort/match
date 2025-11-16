@@ -336,6 +336,10 @@ export class Game extends Phaser.Scene {
     }
 
     onPointerDown(pointer) {
+        if (!pointer.primaryDown) {
+            return;
+        }
+
         const x = Math.floor((pointer.downX - this.boardOffsetX) / this.tileSize);
         let y = Math.floor((pointer.downY - this.boardOffsetY) / this.tileSize);
         if (x >= 0 && x < this.gridSize && y >= 0 && y < this.gridSize) {
@@ -406,7 +410,7 @@ export class Game extends Phaser.Scene {
     }
 
     onPointerMove(pointer) {
-        if (this.pointer !== null && pointer.id === this.pointer.id) {
+        if (this.pointer !== null && pointer.id === this.pointer.id && this.pointer.primaryDown) {
             const [magnitude, direction] = this.getMagnitudeAndDirection(this.pointer);
             if (magnitude > this.moveThreshold) {
                 if (this.move !== null && (this.move.direction !== direction || this.move.id !== this.draggedId)) {
@@ -523,7 +527,7 @@ export class Game extends Phaser.Scene {
     }
 
     onPointerUp(pointer) {
-        if (this.pointer !== null && pointer.id === this.pointer.id) {
+        if (this.pointer !== null && pointer.id === this.pointer.id && !pointer.primaryDown) {
             this.pointer = null;
             this.draggedId = null;
         }
@@ -757,6 +761,10 @@ export class Game extends Phaser.Scene {
     update(time, delta) {
         this.updateTime = time;
 
+        if (this.pointer !== null && !this.pointer.primaryDown) {
+            this.pointer = null;
+        }
+
         if (this.pointer !== null) {
             const [magnitude, direction] = this.getMagnitudeAndDirection(this.pointer);
             if (magnitude > this.moveThreshold) {
@@ -782,7 +790,7 @@ export class Game extends Phaser.Scene {
             [newGrid] = this.updateGrid(this.grid, time, null);
         }
         
-        if (this.move !== null && newMove === null) {
+        if (this.move !== null && (newMove === null || this.pointer === null)) {
             this.pointer = null;
             this.draggedId = null;
             this.move = null;
