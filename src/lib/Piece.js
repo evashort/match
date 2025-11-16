@@ -45,6 +45,10 @@ export class FallingGem extends Piece {
     }
 
     height(time) {
+        if (time === null) {
+            return 0;
+        }
+
         let delta = this.arrivalTime - time;
         let height = 0;
         while (delta > FallingGem.DURATIONS[height]) {

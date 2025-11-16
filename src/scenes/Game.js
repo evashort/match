@@ -14,6 +14,7 @@ export class Game extends Phaser.Scene {
         this.draggedId = null;
         this.move = null;
         this.moveLegal = null;
+        this.updateTime = null;
         this.level = 1;
         this.grid = null;
         this.idSprites = {};
@@ -335,12 +336,32 @@ export class Game extends Phaser.Scene {
     }
 
     onPointerDown(pointer) {
-        const [x, y] = this.getDragStart(pointer);
+        const x = Math.floor((pointer.downX - this.boardOffsetX) / this.tileSize);
+        let y = Math.floor((pointer.downY - this.boardOffsetY) / this.tileSize);
         if (x >= 0 && x < this.gridSize && y >= 0 && y < this.gridSize) {
-            this.pointer = pointer;
-            this.draggedId = this.grid[y][x].id;
-            this.move = null;
-            this.moveLegal = null;
+            let bestY = y;
+            let bestHeightDifference = null;
+            for (let y = 0; y < this.gridSize; y++) {
+                const gem = this.grid[y][x];
+                let height = 0;
+                if (gem instanceof FallingGem) {
+                    height = gem.height(this.updateTime);
+                }
+
+                const gemY = this.boardOffsetY + (y + 0.5 - height) * this.tileSize;
+                const heightDifference = Math.abs(gemY - pointer.downY);
+                if (bestHeightDifference === null || heightDifference < bestHeightDifference) {
+                    bestHeightDifference = heightDifference;
+                    bestY = y;
+                }
+            }
+
+            if (!(this.grid[bestY][x] instanceof Hole)) {
+                this.pointer = pointer;
+                this.draggedId = this.grid[bestY][x].id;
+                this.move = null;
+                this.moveLegal = null;
+            }
         }
 
         return;
@@ -533,12 +554,6 @@ export class Game extends Phaser.Scene {
                 return [yMagnitude, Direction.UP];
             }
         }
-    }
-
-    getDragStart(pointer) {
-        const x = Math.floor((pointer.downX - this.boardOffsetX) / this.tileSize);
-        const y = Math.floor((pointer.downY - this.boardOffsetY) / this.tileSize);
-        return [x, y];
     }
 
     tryMoveSelectedCar(deltaX, deltaY) {
@@ -740,6 +755,8 @@ export class Game extends Phaser.Scene {
     }
 
     update(time, delta) {
+        this.updateTime = time;
+
         if (this.pointer !== null) {
             const [magnitude, direction] = this.getMagnitudeAndDirection(this.pointer);
             if (magnitude > this.moveThreshold) {
@@ -851,6 +868,8 @@ export class Game extends Phaser.Scene {
                     const sprite = this.idSprites[gem.id];
                     const remainder = (gem.arrivalTime - time) / ShrinkingGem.DURATION;
                     sprite.setScale(remainder);
+                    sprite.x = this.boardOffsetX + (x + 0.5) * this.tileSize;
+                    sprite.y = this.boardOffsetY + (y + 0.5) * this.tileSize;
                 } else if (this.grid[y][x] instanceof FallingGem) {
                     const gem = this.grid[y][x];
                     const sprite = this.idSprites[gem.id];
@@ -888,8 +907,7 @@ export class Game extends Phaser.Scene {
                 let baseX = this.boardOffsetX + (draggedX + 0.5) * this.tileSize;
                 let baseY = this.boardOffsetY + (draggedY + 0.5) * this.tileSize;
                 if (gem instanceof FallingGem) {
-                    const remainder = (gem.arrivalTime - time) / FallingGem.DURATION;
-                    baseY -= remainder * this.tileSize;
+                    baseY -= gem.height(time) * this.tileSize;
                 } else if (gem instanceof SlidingGem) {
                     const remainder = (gem.arrivalTime - time) / SlidingGem.DURATION;
                     if (gem.direction == Direction.UP || gem.direction == Direction.DOWN) {
